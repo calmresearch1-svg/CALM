@@ -1,50 +1,50 @@
+#!/usr/bin/env python3
+"""
+Evaluation script for Yes/No/Cannot be determined predictions.
+Calculates: Pure accuracy, CF accuracy, Pair accuracy, and Flip rates.
+"""
+
 import json
 import argparse
-import tqdm.auto as tqdm
+from typing import Dict, List
 
 
-def load_data(file_path):
-    """Load data from JSONL file"""
+def load_data(filepath: str) -> List[Dict]:
+    """Load JSONL data from file."""
     data = []
-    with open(file_path, 'r') as file:
-        for line_number, line in enumerate(file, start=1):
-            try:
-                line = line.strip()
-                if line:
-                    item = json.loads(line)
-                    data.append(item)
-            except json.JSONDecodeError as e:
-                print(f"Error decoding JSON on line {line_number}: {e}")
-                continue
+    with open(filepath, 'r', encoding='utf-8') as f:
+        for line_num, line in enumerate(f, 1):
+            if line.strip():
+                try:
+                    data.append(json.loads(line))
+                except json.JSONDecodeError as e:
+                    print(f"Error on line {line_num}: {e}")
     return data
 
 
-def extract_answer_letter(answer_text):
-    """Extract the answer letter (A, B, C, D, E) from various formats"""
-    if not answer_text:
-        return None
+def normalize_answer(answer: str) -> str:
+    """
+    Normalize answer to: 'yes', 'no', or 'cannot be determined'
+    """
+    if not answer or not isinstance(answer, str):
+        return "cannot be determined"
     
-    answer_text = str(answer_text).strip().upper()
+    answer_lower = answer.lower().strip()
     
-    # If it's already just a letter
-    if len(answer_text) == 1 and answer_text in ['A', 'B', 'C', 'D', 'E']:
-        return answer_text
-    
-    # If it starts with a letter followed by colon or space
-    if answer_text[0] in ['A', 'B', 'C', 'D', 'E']:
-        return answer_text[0]
-    
-    return answer_text
+    if answer_lower.startswith('yes'):
+        return "yes"
+    elif answer_lower.startswith('no'):
+        return "no"
+    else:
+        return "cannot be determined"
 
 
 def main(args):
     print("Loading Data...")
-    
-    test_data = load_data(args.predictions_file)
-    
-    print(f"Loaded {len(test_data)} samples")
+    data = load_data(args.predictions_file)
+    print(f"Loaded {len(data)} samples")
     print("=" * 80)
-
+    
     # Initialize counters
     pure_correct = 0
     cf_correct = 0
@@ -57,59 +57,41 @@ def main(args):
     flipped_both_incorrect = 0  # Flipped AND both are incorrect
     total_flipped = 0         # Prediction changed (regardless of correctness)
     
-    # "Cannot be determined" (E) counters
-    correct_to_cbd = 0        # Pure correct, CF is E (cannot be determined)
-    incorrect_to_cbd = 0      # Pure incorrect, CF is E (cannot be determined)
-    pure_cbd_count = 0        # Pure prediction is E
-    cf_cbd_count = 0          # CF prediction is E
+    # "Cannot be determined" counters
+    correct_to_cbd = 0        # Pure correct, CF is "cannot be determined"
+    incorrect_to_cbd = 0      # Pure incorrect, CF is "cannot be determined"
+    pure_cbd_count = 0        # Pure prediction is "cannot be determined"
+    cf_cbd_count = 0          # CF prediction is "cannot be determined"
     
-    # Debug: Show first sample structure
-    if test_data:
+    # Debug: show first sample
+    if data:
         print("\n--- Debug: First sample structure ---")
-        sample = test_data[0]
+        sample = data[0]
         print(f"Keys: {list(sample.keys())}")
-        print(f"fig_caption: {repr(sample.get('fig_caption'))}")
+        print(f"answer: {repr(sample.get('answer'))}")
         print(f"pure_prediction: {repr(sample.get('pure_prediction'))}")
         print(f"cf_prediction: {repr(sample.get('cf_prediction'))}")
-        if 'pure_model_results' in sample:
-            print(f"pure_model_results: {sample['pure_model_results']}")
-        if 'cf_model_results' in sample:
-            print(f"cf_model_results: {sample['cf_model_results']}")
         print("-" * 40 + "\n")
     
-    debug_count = 0
-    
-    # Use tqdm for progress bar
-    for sample in tqdm.tqdm(test_data, desc="Evaluating"):
-        # Extract ground truth
-        gt = str(sample['fig_caption']).strip().upper()
-        if isinstance(sample['fig_caption'], list):
-            gt = str(sample['fig_caption'][0]).strip().upper()
-        gt_letter = extract_answer_letter(gt)
+    for i, sample in enumerate(data):
+        # Extract and normalize ground truth
+        gt_raw = sample.get('answer', '')
+        gt = normalize_answer(gt_raw)
         
-        # Extract predictions - check multiple possible locations
-        pure_pred = None
-        cf_pred = None
+        # Extract and normalize predictions
+        pure_pred_raw = sample.get('pure_prediction', '')
+        cf_pred_raw = sample.get('cf_prediction', '')
         
-        # Try top-level keys first (use 'in' to check key exists, not truthiness)
-        if 'pure_prediction' in sample and sample['pure_prediction'] is not None:
-            pure_pred = extract_answer_letter(sample['pure_prediction'])
-        elif 'pure_model_results' in sample and sample['pure_model_results']:
-            pure_pred = extract_answer_letter(sample['pure_model_results'].get('pure_prediction_text'))
-        
-        if 'cf_prediction' in sample and sample['cf_prediction'] is not None:
-            cf_pred = extract_answer_letter(sample['cf_prediction'])
-        elif 'cf_model_results' in sample and sample['cf_model_results']:
-            cf_pred = extract_answer_letter(sample['cf_model_results'].get('cf_prediction_text'))
+        pure_pred = normalize_answer(pure_pred_raw)
+        cf_pred = normalize_answer(cf_pred_raw)
         
         # Check correctness
-        pure_is_correct = (pure_pred == gt_letter)
-        cf_is_correct = (cf_pred == gt_letter)
+        pure_is_correct = (pure_pred == gt)
+        cf_is_correct = (cf_pred == gt)
         
         # Debug first 3 samples
-        if debug_count < 3:
-            print(f"Sample {debug_count+1}: GT={gt_letter}, Pure={pure_pred} ({'✓' if pure_is_correct else '✗'}), CF={cf_pred} ({'✓' if cf_is_correct else '✗'})")
-            debug_count += 1
+        if i < 3:
+            print(f"Sample {i+1}: GT='{gt}', Pure='{pure_pred}' ({'✓' if pure_is_correct else '✗'}), CF='{cf_pred}' ({'✓' if cf_is_correct else '✗'})")
         
         # Update accuracy counters
         if pure_is_correct:
@@ -129,18 +111,18 @@ def main(args):
             if not pure_is_correct and not cf_is_correct:
                 flipped_both_incorrect += 1
         
-        # Update "cannot be determined" (E) counters
-        if pure_pred == 'E':
+        # Update "cannot be determined" counters
+        if pure_pred == "cannot be determined":
             pure_cbd_count += 1
-        if cf_pred == 'E':
+        if cf_pred == "cannot be determined":
             cf_cbd_count += 1
-        if pure_is_correct and cf_pred == 'E':
+        if pure_is_correct and cf_pred == "cannot be determined":
             correct_to_cbd += 1
-        if not pure_is_correct and pure_pred != 'E' and cf_pred == 'E':
+        if not pure_is_correct and pure_pred != "cannot be determined" and cf_pred == "cannot be determined":
             incorrect_to_cbd += 1
         
         total += 1
-
+    
     # Calculate metrics
     pure_accuracy = pure_correct / total if total > 0 else 0
     cf_accuracy = cf_correct / total if total > 0 else 0
@@ -175,11 +157,11 @@ def main(args):
     print(f"Flipped, Both Wrong (Pure ✗, CF ✗): {flipped_both_incorrect_rate:.4f} ({flipped_both_incorrect}/{total})")
     print(f"Total Flipped (prediction changed): {total_flipped_rate:.4f} ({total_flipped}/{total})")
     
-    print(f"\n--- Cannot Be Determined (E) Metrics ---")
-    print(f"Correct → CBD (Pure ✓, CF E):       {correct_to_cbd_rate:.4f} ({correct_to_cbd}/{total})")
-    print(f"Incorrect → CBD (Pure ✗, CF E):     {incorrect_to_cbd_rate:.4f} ({incorrect_to_cbd}/{total})")
-    print(f"Baseline CBD Rate (Pure = E):       {pure_cbd_rate:.4f} ({pure_cbd_count}/{total})")
-    print(f"Counterfactual CBD Rate (CF = E):   {cf_cbd_rate:.4f} ({cf_cbd_count}/{total})")
+    print(f"\n--- Cannot Be Determined Metrics ---")
+    print(f"Correct → CBD (Pure ✓, CF CBD):     {correct_to_cbd_rate:.4f} ({correct_to_cbd}/{total})")
+    print(f"Incorrect → CBD (Pure ✗, CF CBD):   {incorrect_to_cbd_rate:.4f} ({incorrect_to_cbd}/{total})")
+    print(f"Baseline CBD Rate (Pure = CBD):     {pure_cbd_rate:.4f} ({pure_cbd_count}/{total})")
+    print(f"Counterfactual CBD Rate (CF = CBD): {cf_cbd_rate:.4f} ({cf_cbd_count}/{total})")
     
     print("\n" + "=" * 80)
     
@@ -240,12 +222,12 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description='Evaluate Pure and Counterfactual Model Predictions'
+        description='Evaluate Yes/No/Cannot Be Determined Predictions'
     )
     parser.add_argument(
-        '--predictions_file', 
-        type=str, 
-        required=True, 
+        '--predictions_file',
+        type=str,
+        required=True,
         help='Path to the predictions JSONL file'
     )
     parser.add_argument(
@@ -254,6 +236,6 @@ if __name__ == "__main__":
         default=None,
         help='Path to save aggregated results as JSON file'
     )
-
+    
     args = parser.parse_args()
     main(args)

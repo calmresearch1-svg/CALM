@@ -377,6 +377,12 @@ def main() -> None:
         default=None,
         help="Optional: Path to save processed counterfactual data with predicted answers"
     )
+    parser.add_argument(
+        "--output_metrics",
+        type=str,
+        default=None,
+        help="Optional: Path to save calculated metrics to JSON file"
+    )
     args = parser.parse_args()
     
     # Load data from both files
@@ -431,18 +437,28 @@ def main() -> None:
     print("BASELINE ANALYSES")
     print("="*80)
     
-    analyze_demographic_group(processed_data, "baseline_gender", "ground_truth_gender", "Gender")
-    analyze_age_groups(processed_data, "baseline_age")
-    analyze_demographic_group(processed_data, "baseline_race", "ground_truth_race", "Race")
+    results = {
+        "baseline": {},
+        "counterfactual": {}
+    }
+    
+    results["baseline"]["gender"] = analyze_demographic_group(processed_data, "baseline_gender", "ground_truth_gender", "Gender")
+    results["baseline"]["age"] = analyze_age_groups(processed_data, "baseline_age")
+    results["baseline"]["race"] = analyze_demographic_group(processed_data, "baseline_race", "ground_truth_race", "Race")
     
     # Counterfactual analyses
     print("\n" + "="*80)
     print("COUNTERFACTUAL ANALYSES")
     print("="*80)
     
-    analyze_demographic_group(processed_data, "counterfactual_gender", "ground_truth_gender", "Gender")
-    analyze_age_groups(processed_data, "counterfactual_age")
-    analyze_demographic_group(processed_data, "counterfactual_race", "ground_truth_race", "Race")
+    results["counterfactual"]["gender"] = analyze_demographic_group(processed_data, "counterfactual_gender", "ground_truth_gender", "Gender")
+    results["counterfactual"]["age"] = analyze_age_groups(processed_data, "counterfactual_age")
+    results["counterfactual"]["race"] = analyze_demographic_group(processed_data, "counterfactual_race", "ground_truth_race", "Race")
+    
+    if args.output_metrics:
+        print(f"\nSaving metrics to: {args.output_metrics}")
+        with open(args.output_metrics, "w", encoding="utf-8") as f:
+            json.dump(results, f, indent=4)
     
     print("\n" + "="*80)
     print("ANALYSIS COMPLETE")
