@@ -1,9 +1,30 @@
 import json
 import sys
 import argparse
+import re
 import numpy as np
 from nltk.translate.meteor_score import meteor_score
 from nltk.tokenize import word_tokenize
+
+
+def clean_report(text):
+    """
+    Clean report text by removing all symbols except letters, numbers, spaces, commas, and periods.
+    
+    Args:
+        text: Input text string
+    
+    Returns:
+        Cleaned text string
+    """
+    if not text or not isinstance(text, str):
+        return text
+    # Keep only alphanumeric characters, spaces, commas, and periods
+    cleaned = re.sub(r'[^a-zA-Z0-9\s,.]', '', text)
+    # Normalize whitespace (multiple spaces to single space)
+    cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+    return cleaned
+
 
 def calculate_meteor(candidate, reference):
     """
@@ -58,6 +79,11 @@ def evaluate_reports(data):
     if not baseline_response and not counterfactual_response:
         print("Warning: No baseline or counterfactual responses found", file=sys.stderr)
         return None
+    
+    # Clean all texts before calculating scores
+    ground_truth = clean_report(ground_truth)
+    baseline_response = clean_report(baseline_response) if baseline_response else None
+    counterfactual_response = clean_report(counterfactual_response) if counterfactual_response else None
     
     # Calculate METEOR scores
     results = {}
